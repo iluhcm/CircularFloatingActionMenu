@@ -10,12 +10,13 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Path;
 import android.graphics.PathMeasure;
-import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -49,42 +50,22 @@ public class FloatingActionMenu {
     private boolean animated;
     /** whether the menu is currently open or not */
     private boolean open;
+    /** The status bar height, only calculate once. */
+    private int statusBarHeight;
+    /** Long press event handler, which support drag and drop. */
+    private LongPressHandler longPressHandler;
 
-    /**
-     * Constructor that takes the parameters collected using {@link FloatingActionMenu.Builder}
-     * 
-     * @param mainActionView
-     * @param startAngle
-     * @param endAngle
-     * @param radius
-     * @param subActionItems
-     * @param animationHandler
-     * @param animated
-     */
-    public FloatingActionMenu(final View mainActionView, int startAngle, int endAngle, int radius,
-        List<Item> subActionItems, MenuAnimationHandler animationHandler, boolean animated,
-        MenuStateChangeListener stateChangeListener) {
-        this.mainActionView = mainActionView;
-        this.startAngle = startAngle;
-        this.endAngle = endAngle;
-        this.radius = radius;
-        this.subActionItems = subActionItems;
-        this.animationHandler = animationHandler;
-        this.animated = animated;
-        // The menu is initially closed.
-        this.open = false;
+    private FloatingActionMenu() {
+    }
 
-        this.stateChangeListener = stateChangeListener;
+    private void init() {
+        assert mainActionView != null : "Main action view is null!";
 
-        // Listen click events on the main action view
-        // In the future, touch and drag events could be listened to offer an alternative behaviour
-        this.mainActionView.setClickable(true);
-        // this.mainActionView.setOnClickListener(new ActionViewClickListener());
-
-        // Do not forget to set the menu as self to our customizable animation handler
         if (animationHandler != null) {
             animationHandler.setMenu(this);
         }
+
+        setDragEnable(true);
 
         // Find items with undefined sizes
         for (final Item item : subActionItems) {
@@ -96,6 +77,42 @@ public class FloatingActionMenu {
                 item.view.setAlpha(0);
                 // Wait for the right time
                 item.view.post(new ItemViewQueueListener(item));
+            }
+        }
+    }
+
+    public void setDragEnable(boolean enable) {
+        if (enable) {
+            if (longPressHandler == null) {
+                longPressHandler = new LongPressHandler(mainActionView);
+            }
+            longPressHandler.setOnLongPressListener(new LongPressHandler.OnLongPressListener() {
+                @Override
+                public boolean onLongPressed(MotionEvent event) {
+                    FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mainActionView.getLayoutParams();
+                    params.gravity = Gravity.TOP | Gravity.LEFT;
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_MOVE:
+                            int x = (int) event.getRawX();
+                            int y = (int) event.getRawY();
+                            int width = mainActionView.getMeasuredWidth();
+                            int height = mainActionView.getMeasuredHeight();
+                            int l = x - width / 2;
+                            int r = x + width / 2;
+                            int t = y - height / 2 - getStatusBarHeight();
+                            int b = y + height / 2 - getStatusBarHeight();
+                            params.leftMargin = l;
+                            params.topMargin = t;
+                            mainActionView.layout(l, t, r, b);
+                            return true;
+                    }
+                    return false;
+                }
+            });
+        } else {
+            if (longPressHandler != null) {
+                longPressHandler.setOnLongPressListener(null);
+                longPressHandler = null;
             }
         }
     }
@@ -343,43 +360,15 @@ public class FloatingActionMenu {
         }
     }
 
-    private WindowManager.LayoutParams calculateOverlayContainerParams() {
-        // calculate the minimum viable size of overlayContainer
-        WindowManager.LayoutParams overlayParams = getDefaultSystemWindowParams();
-        int left = 9999, right = 0, top = 9999, bottom = 0;
-        for (int i = 0; i < subActionItems.size(); i++) {
-            int lm = subActionItems.get(i).x;
-            int tm = subActionItems.get(i).y;
-
-            if (lm < left) {
-                left = lm;
-            }
-            if (tm < top) {
-                top = tm;
-            }
-            if (lm + subActionItems.get(i).width > right) {
-                right = lm + subActionItems.get(i).width;
-            }
-            if (tm + subActionItems.get(i).height > bottom) {
-                bottom = tm + subActionItems.get(i).height;
-            }
-        }
-        overlayParams.width = right - left;
-        overlayParams.height = bottom - top;
-        overlayParams.x = left;
-        overlayParams.y = top;
-        overlayParams.gravity = Gravity.TOP | Gravity.LEFT;
-        return overlayParams;
-    }
-
     public int getStatusBarHeight() {
-        int result = 0;
-        int resourceId =
-            mainActionView.getContext().getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (resourceId > 0) {
-            result = mainActionView.getContext().getResources().getDimensionPixelSize(resourceId);
+        if (statusBarHeight == 0) {
+            int resourceId =
+                mainActionView.getContext().getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (resourceId > 0) {
+                statusBarHeight = mainActionView.getContext().getResources().getDimensionPixelSize(resourceId);
+            }
         }
-        return result;
+        return statusBarHeight;
     }
 
     public void addViewToCurrentContainer(View view) {
@@ -403,17 +392,6 @@ public class FloatingActionMenu {
 
     public void setStateChangeListener(MenuStateChangeListener listener) {
         this.stateChangeListener = listener;
-    }
-
-    /**
-     * A simple click listener used by the main action view
-     */
-    public class ActionViewClickListener implements View.OnClickListener {
-
-        @Override
-        public void onClick(View v) {
-            toggle(animated);
-        }
     }
 
     /**
@@ -484,7 +462,7 @@ public class FloatingActionMenu {
      * A builder for {@link FloatingActionMenu} in conventional Java Builder format
      */
     public static class Builder {
-
+        private FloatingActionMenu menu;
         private int startAngle;
         private int endAngle;
         private int radius;
@@ -587,19 +565,19 @@ public class FloatingActionMenu {
         }
 
         public FloatingActionMenu build() {
-            return new FloatingActionMenu(actionView, startAngle, endAngle, radius, subActionItems, animationHandler,
-                animated, stateChangeListener);
+            if (menu == null) {
+                menu = new FloatingActionMenu();
+            }
+            menu.startAngle = startAngle;
+            menu.endAngle = endAngle;
+            menu.radius = radius;
+            menu.mainActionView = actionView;
+            menu.subActionItems = subActionItems;
+            menu.animationHandler = animationHandler;
+            menu.animated = animated;
+            menu.stateChangeListener = stateChangeListener;
+            menu.init();
+            return menu;
         }
     }
-
-    public static WindowManager.LayoutParams getDefaultSystemWindowParams() {
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT);
-        params.format = PixelFormat.RGBA_8888;
-        params.gravity = Gravity.TOP | Gravity.LEFT;
-        return params;
-    }
-
 }

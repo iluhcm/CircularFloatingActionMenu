@@ -5,7 +5,6 @@ package com.oguzdev.circularfloatingactionmenu.library;
 
 import android.app.Activity;
 import android.content.Context;
-import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.view.Gravity;
@@ -20,6 +19,7 @@ import android.widget.FrameLayout;
  */
 public class FloatingActionButton extends FrameLayout {
 
+    private static final String TAG = FloatingActionButton.class.getSimpleName();
     public static final int THEME_LIGHT = 0;
     public static final int THEME_DARK = 1;
 
@@ -36,12 +36,13 @@ public class FloatingActionButton extends FrameLayout {
      * Constructor that takes parameters collected using {@link FloatingActionMenu.Builder}
      * 
      * @param context a reference to the current context
-     * @param layoutParams
-     * @param theme
-     * @param backgroundDrawable
-     * @param position
-     * @param contentView
-     * @param contentParams
+     * @param layoutParams the layout parameters
+     * @param theme theme used in the background, must be one of {@link FloatingActionButton#THEME_LIGHT} or
+     *            {@link FloatingActionButton#THEME_DARK}
+     * @param backgroundDrawable the drawable resource used in the background
+     * @param position relative position to the screen, {@see FloatingActionButton#setPosition}
+     * @param contentView the content view attached to for this frame layout
+     * @param contentParams the content view parameters.
      */
     public FloatingActionButton(Context context, ViewGroup.LayoutParams layoutParams, int theme,
         Drawable backgroundDrawable, int position, View contentView, FrameLayout.LayoutParams contentParams) {
@@ -240,17 +241,6 @@ public class FloatingActionButton extends FrameLayout {
         public FloatingActionButton build() {
             return new FloatingActionButton(context, layoutParams, theme, backgroundDrawable, position, contentView,
                 contentParams);
-        }
-
-        public static WindowManager.LayoutParams getDefaultSystemWindowParams(Context context) {
-            int size = context.getResources().getDimensionPixelSize(R.dimen.action_button_size);
-            WindowManager.LayoutParams params =
-                new WindowManager.LayoutParams(size, size, WindowManager.LayoutParams.TYPE_SYSTEM_ALERT, // z-ordering
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                    PixelFormat.TRANSLUCENT);
-            params.format = PixelFormat.RGBA_8888;
-            params.gravity = Gravity.TOP | Gravity.LEFT;
-            return params;
         }
     }
 }
